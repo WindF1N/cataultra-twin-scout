@@ -12,7 +12,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from .analysis import analyze_session, write_twins_report
-from .api import CatapultReadApi, is_completed
+from .api import CatapultReadApi, is_completed  # is_completed больше не используется, но оставлен для совместимости
 from .models import FairData, ScoutState, TokenCandidate, TwinScoutConfig
 from .storage import TwinScoutStorage
 
@@ -48,13 +48,14 @@ class TwinScoutDaemon:
         self.api = api
         self.storage = storage
         self.config = config
+        self._pending_metadata: dict[str, TokenCandidate] = {}
 
     def run_once(self) -> CollectStepResult:
         console.log("[bold blue]Начало нового цикла сбора[/]")
         state = self.storage.load_state()
         processed = set(state.processed_token_ids)
-        pending_fair = set(state.pending_fair_ids)            # ждут раскрытия fair‑данных
-        pending_completion = set(state.pending_completion_ids) # ждут завершения токена
+        # Единая очередь ожидания раскрытия fair_data (используем pending_completion_ids)
+        pending = set(state.pending_completion_ids)
 
         session_dir = self.storage.session_dir(state.current_session_number)
         added = 0
@@ -62,25 +63,25 @@ class TwinScoutDaemon:
         scanned = 0
 
         tokens = self.api.list_tokens(self.config.speed_modes, limit=self.config.market_limit, rank=self.config.rank)
-        # Новые кандидаты: ещё не обработаны и не в очередях
+        # Новые кандидаты: ещё не обработаны и не в очереди
         candidates = [
             c for c in tokens
-            if c.token_id and c.token_id not in processed
-            and c.token_id not in pending_fair
-            and c.token_id not in pending_completion
+            if c.token_id and c.token_id not in processed and c.token_id not in pending
         ]
         console.log(f"[bold]Всего токенов в выдаче:[/] {len(tokens)}, новых кандидатов: {len(candidates)}")
 
-        # Собираем все задачи в один список
-        new_tasks = [(c.token_id, True, c) for c in candidates]
-        pending_fair_tasks = [(pid, False, None) for pid in pending_fair]
-        pending_comp_tasks = [(pid, False, None) for pid in pending_completion]
-        all_tasks = new_tasks + pending_fair_tasks + pending_comp_tasks
-        random.shuffle(all_tasks)
+        # Сразу добавляем всех новых кандидатов в очередь ожидания раскрытия
+        new_pending = set(pending)
+        for c in candidates:
+            new_pending.add(c.token_id)
+            self._pending_metadata[c.token_id] = c   # <-- добавить
+            console.log(f"[dim]Токен {c.token_id} ({c.ticker or 'N/A'}) добавлен в очередь ожидания раскрытия[/]")
 
+        # Все токены из очереди будут проверены на наличие раскрытых тиков
+        all_tasks = list(new_pending)
+        random.shuffle(all_tasks)
         task_iter = iter(all_tasks)
-        new_pending_fair = set()
-        new_pending_completion = set()
+        new_pending = set()  # сюда попадут токены, которые ещё не раскрыты
 
         with ThreadPoolExecutor(max_workers=self.config.worker_count, thread_name_prefix="twin-scout") as executor:
             active = {}
@@ -88,11 +89,11 @@ class TwinScoutDaemon:
             def submit_next() -> bool:
                 nonlocal scanned
                 try:
-                    token_id, is_new, candidate = next(task_iter)
+                    token_id = next(task_iter)
                 except StopIteration:
                     return False
                 future = executor.submit(self._fetch_with_delay, token_id)
-                active[future] = (token_id, is_new, candidate)
+                active[future] = token_id
                 scanned += 1
                 return True
 
@@ -101,54 +102,54 @@ class TwinScoutDaemon:
 
             while active:
                 future = next(as_completed(active))
-                token_id, is_new, candidate = active.pop(future)
+                token_id = active.pop(future)
                 result = future.result()
 
                 if result.error:
                     errors += 1
                     console.log(f"[red]Ошибка для {token_id}:[/] {result.error}")
-                    new_pending_completion.add(token_id)  # попробуем позже
+                    new_pending.add(token_id)  # попробуем позже
                     continue
 
                 fair_data = result.fair_data
-                completed = is_completed(candidate) if candidate is not None else True
-
-                if not completed:
-                    console.log(f"[dim]Токен {token_id} ещё не завершён – отложен[/]")
-                    new_pending_completion.add(token_id)
-                    continue
-
                 if fair_data is not None and fair_data.is_revealed:
                     if token_id not in processed:
+                        # Создаём минимальную запись кандидата для сохранения
+                        candidate = self._pending_metadata.get(token_id)
                         if candidate is None:
+                            # fallback, если вдруг не сохранились
                             candidate = TokenCandidate(
-                                token_id=token_id, ticker="", icon_url="", mode="",
-                                is_completed=True, start_date="", end_date=""
+                                token_id=token_id,
+                                ticker="",
+                                start_date="",
+                                end_date=""
                             )
+                        else:
+                            # Удаляем из словаря, так как токен больше не в очереди
+                            del self._pending_metadata[token_id]
+
                         self.storage.write_token(session_dir, candidate, fair_data)
                         processed.add(token_id)
                         state.last_token_id = token_id
                         state.last_ticker = candidate.ticker
                         added += 1
-                        console.log(f"[green]Сохранили токен {token_id}[/] ({candidate.ticker or 'N/A'})")
-                    # убираем из всех очередей
-                    new_pending_fair.discard(token_id)
-                    new_pending_completion.discard(token_id)
+                        console.log(f"[green]Сохранили токен {token_id}[/]")
                 else:
-                    console.log(f"[dim]Токен {token_id} завершён, но fair_data не раскрыт – отложен[/]")
-                    new_pending_fair.add(token_id)
+                    # fair_data не раскрыт – оставляем в очереди
+                    new_pending.add(token_id)
 
                 if self.storage.token_count(session_dir) >= self.config.batch_size:
-                    for pending in active:
-                        pending.cancel()
+                    for pending_future in active:
+                        pending_future.cancel()
                     active.clear()
                     console.log("[bold yellow]Достигнут лимит пачки, прерываем цикл[/]")
                     break
                 submit_next()
 
+        # Обновляем состояние
         state.processed_token_ids = sorted(processed)
-        state.pending_fair_ids = sorted(new_pending_fair)
-        state.pending_completion_ids = sorted(new_pending_completion)
+        state.pending_completion_ids = sorted(new_pending)
+        state.pending_fair_ids = []  # больше не используется
         collected_count = self.storage.token_count(session_dir)
 
         archived = False
@@ -178,7 +179,7 @@ class TwinScoutDaemon:
         self.storage.save_state(state)
         console.log(
             f"[bold blue]Цикл завершён: добавлено {added}, ошибок {errors}, "
-            f"в очереди fair={len(new_pending_fair)}, завершения={len(new_pending_completion)}[/]"
+            f"в очереди ожидания раскрытия = {len(new_pending)}[/]"
         )
 
         return CollectStepResult(
@@ -192,7 +193,7 @@ class TwinScoutDaemon:
             archived=archived,
             archive_path=str(archive_path) if archive_path else None,
             twin_pairs_found=pairs_found,
-            pending_count=len(new_pending_fair) + len(new_pending_completion),
+            pending_count=len(new_pending),
         )
 
     def _fetch_with_delay(self, token_id: str) -> FairFetchResult:

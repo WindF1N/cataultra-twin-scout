@@ -19,7 +19,7 @@ class CatapultReadApi:
         variables = {
             "filter": filter_payload,
             "pagination": {"limit": int(limit)},
-            "sort": {"direction": "Desc", "field": "StartTime"},
+            "sort": {"direction": "Asc", "field": "TimeLeft"},
         }
         result = self.client.execute("TurboTokenList", ops.TURBO_TOKEN_LIST, variables)
         if not result.ok:
