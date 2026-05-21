@@ -1,0 +1,2 @@
+[console_scripts]
+twin-scout = cataultra_twin_scout.cli:main

@@ -105,3 +105,5 @@ class ScoutState(StrictModel):
     last_token_id: str | None = None
     last_ticker: str | None = None
     updated_at: str = Field(default_factory=utc_now_iso)
+    pending_fair_ids: list[str] = []
+    pending_completion_ids: list[str] = []

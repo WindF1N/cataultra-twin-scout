@@ -29,6 +29,7 @@ class CatapultReadApi:
 
     def fetch_token_fair_data(self, token_id: str) -> FairData | None:
         result = self.client.execute("TurboTokenFairData", ops.TURBO_TOKEN_FAIR_DATA, {"tokenId": str(token_id)})
+        
         if not result.ok:
             return None
         payload = ((result.data or {}).get("turboTokenFairData") or {})
