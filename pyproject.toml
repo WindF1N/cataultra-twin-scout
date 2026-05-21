@@ -1,0 +1,24 @@
+[project]
+name = "cataultra-twin-scout"
+version = "0.1.0"
+description = "Autonomous Catapult provable-fairness collector and twin graph analyzer."
+requires-python = ">=3.11"
+dependencies = [
+    "curl_cffi>=0.7.0",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "questionary>=2.0.1",
+    "rich>=15.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.0",
+]
+
+[project.scripts]
+twin-scout = "cataultra_twin_scout.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
