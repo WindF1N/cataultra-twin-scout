@@ -1,0 +1,92 @@
+[
+  {
+    "token_id": "16424399",
+    "mode": "FAST",
+    "correlation": 0.9636495504310941,
+    "entry_type": "SHORT",
+    "pnl": 0.007956355743119481,
+    "stop_hit": false,
+    "pattern_id": "FAST_cluster_16388210"
+  },
+  {
+    "token_id": "16427233",
+    "mode": "FAST",
+    "correlation": 0.9549912549020326,
+    "entry_type": "SHORT",
+    "pnl": 0.18267857903145113,
+    "stop_hit": false,
+    "pattern_id": "FAST_cluster_16388210"
+  },
+  {
+    "token_id": "16428384",
+    "mode": "FAST",
+    "correlation": 0.9601741042102426,
+    "entry_type": "SHORT",
+    "pnl": -0.5,
+    "stop_hit": true,
+    "pattern_id": "FAST_cluster_16388210"
+  },
+  {
+    "token_id": "16431482",
+    "mode": "FAST",
+    "correlation": 0.9550419484453451,
+    "entry_type": "SHORT",
+    "pnl": -0.5,
+    "stop_hit": true,
+    "pattern_id": "FAST_cluster_16388210"
+  },
+  {
+    "token_id": "16431592",
+    "mode": "FAST",
+    "correlation": 0.973419224815623,
+    "entry_type": "SHORT",
+    "pnl": 0.42099795204254864,
+    "stop_hit": false,
+    "pattern_id": "FAST_cluster_16388210"
+  },
+  {
+    "token_id": "16431933",
+    "mode": "FAST",
+    "correlation": 0.9537096791858111,
+    "entry_type": "SHORT",
+    "pnl": -0.32051420437415656,
+    "stop_hit": false,
+    "pattern_id": "FAST_cluster_16388210"
+  },
+  {
+    "token_id": "16433049",
+    "mode": "FAST",
+    "correlation": 0.9508774926812201,
+    "entry_type": "SHORT",
+    "pnl": 0.4315132518108926,
+    "stop_hit": false,
+    "pattern_id": "FAST_cluster_16388210"
+  },
+  {
+    "token_id": "16434260",
+    "mode": "FAST",
+    "correlation": 0.9533594507653936,
+    "entry_type": "SHORT",
+    "pnl": 0.8735512226482902,
+    "stop_hit": false,
+    "pattern_id": "FAST_cluster_16388210"
+  },
+  {
+    "token_id": "16435541",
+    "mode": "FAST",
+    "correlation": 0.9541669331396928,
+    "entry_type": "SHORT",
+    "pnl": 1.6344797275723026,
+    "stop_hit": false,
+    "pattern_id": "FAST_cluster_16388210"
+  },
+  {
+    "token_id": "16435550",
+    "mode": "FAST",
+    "correlation": 0.953977466366235,
+    "entry_type": "SHORT",
+    "pnl": -0.27801032038741236,
+    "stop_hit": false,
+    "pattern_id": "FAST_cluster_16388210"
+  }
+]

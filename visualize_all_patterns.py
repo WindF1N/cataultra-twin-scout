@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Визуализация всех эталонных паттернов из базы.
+Визуализация всех эталонных паттернов из базы patterns_by_mode/.
 Использование:
-    python visualize_all_patterns.py --data_dir private/twin_scout [--grid]
+    python visualize_all_patterns.py --data_dir private/twin_scout/patterns_by_mode [--grid]
 """
 import argparse
 import json
@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 def load_patterns(data_dir: Path) -> dict:
     db_file = data_dir / 'patterns_db.json'
     if not db_file.exists():
-        print("База паттернов не найдена. Сначала запустите twin_predictor.py --build")
+        print(f"База не найдена: {db_file}")
         exit(1)
     with open(db_file) as f:
         meta = json.load(f)
@@ -21,10 +21,10 @@ def load_patterns(data_dir: Path) -> dict:
     for pid, info in meta.items():
         npy_file = data_dir / info['file']
         if npy_file.exists():
-            avg = np.load(npy_file).tolist()
+            avg = np.load(npy_file)
             patterns[pid] = {
                 'id': pid,
-                'ticker': info.get('ticker', '?'),
+                'mode': info['mode'],
                 'num_twins': info['num_twins'],
                 'avg_curve': avg
             }
@@ -32,102 +32,95 @@ def load_patterns(data_dir: Path) -> dict:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_dir', default='private/twin_scout', help='Папка с patterns_db.json и .npy')
-    parser.add_argument('--grid', action='store_true', help='Сгенерировать сетку по 25 паттернов на листе (сохранит в all_patterns_plots/)')
+    parser.add_argument('--data_dir', default='private/twin_scout/patterns_by_mode', 
+                        help='Папка с patterns_db.json и .npy файлами')
+    parser.add_argument('--grid', action='store_true', 
+                        help='Показать сетку по каждому режиму')
     args = parser.parse_args()
 
     data_dir = Path(args.data_dir)
     patterns = load_patterns(data_dir)
     print(f"Загружено паттернов: {len(patterns)}")
 
-    # Подготовка данных
-    all_curves = []
-    lengths = []
-    final_prices = []
-    min_values = []
+    # Группировка по режимам
+    mode_patterns = {}
     for pid, p in patterns.items():
-        curve = p['avg_curve']
-        all_curves.append(curve)
-        lengths.append(len(curve))
-        final_prices.append(curve[-1])
-        min_values.append(min(curve))
+        mode = p['mode']
+        mode_patterns.setdefault(mode, []).append(p)
 
-    # Общий график всех кривых
+    # Цвета для режимов
+    mode_colors = {
+        'NORMAL': 'green',
+        'FAST': 'blue',
+        'FLASH': 'orange',
+        'CRACK': 'red',
+        'MAYHEM': 'purple'
+    }
+
+    # 1. Общий график: все паттерны, цвет по режиму
     plt.figure(figsize=(14, 8))
-    for curve in all_curves:
-        plt.plot(curve, alpha=0.3, linewidth=0.8)
-    plt.axhline(y=1.0, color='black', linestyle=':', alpha=0.5, label='Начальная цена (1.0)')
-    plt.title(f'Все эталонные паттерны ({len(all_curves)} шт.)')
-    plt.xlabel('Тик (время)')
-    plt.ylabel('Нормированная цена')
-    plt.legend()
+    for mode, pats in mode_patterns.items():
+        color = mode_colors.get(mode, 'gray')
+        for p in pats:
+            plt.plot(p['avg_curve'], alpha=0.4, linewidth=0.8, color=color)
+    plt.axhline(y=1.0, color='black', linestyle=':', alpha=0.5, label='Старт (1.0)')
+    plt.title(f'Все эталонные паттерны ({len(patterns)} шт.) по speed_mode')
+    plt.xlabel('Тик')
+    plt.ylabel('Норм. цена')
+    # Легенда по режимам
+    from matplotlib.lines import Line2D
+    legend_elements = [Line2D([0], [0], color=mode_colors.get(m, 'gray'), lw=2, label=m) 
+                       for m in sorted(mode_patterns.keys())]
+    plt.legend(handles=legend_elements, title='Режим')
     plt.tight_layout()
     plt.savefig(data_dir / 'all_patterns_overview.png', dpi=150)
     print(f"Общий график сохранён: {data_dir / 'all_patterns_overview.png'}")
 
-    # Статистика
-    print("\n=== Статистика по всем паттернам ===")
-    print(f"Количество паттернов: {len(patterns)}")
-    print(f"Средняя длина: {np.mean(lengths):.1f} тиков")
-    print(f"Средняя финальная цена: {np.mean(final_prices):.4f}")
-    print(f"Медианная финальная цена: {np.median(final_prices):.4f}")
-    print(f"Минимальная финальная цена: {min(final_prices):.4f}, максимальная: {max(final_prices):.4f}")
-    up_count = sum(1 for fp in final_prices if fp > 1.0)
-    down_count = sum(1 for fp in final_prices if fp < 1.0)
-    flat_count = len(final_prices) - up_count - down_count
-    print(f"Заканчиваются выше старта: {up_count}, ниже старта: {down_count}, без изменений: {flat_count}")
+    # 2. Отдельные графики по каждому режиму
+    for mode, pats in sorted(mode_patterns.items()):
+        plt.figure(figsize=(12, 6))
+        for p in pats:
+            plt.plot(p['avg_curve'], alpha=0.7, linewidth=0.8)
+        plt.axhline(y=1.0, color='black', linestyle=':', alpha=0.5)
+        plt.title(f'Режим {mode} ({len(pats)} паттернов)')
+        plt.xlabel('Тик')
+        plt.ylabel('Норм. цена')
+        plt.tight_layout()
+        fname = data_dir / f'patterns_{mode}.png'
+        plt.savefig(fname, dpi=150)
+        plt.close()
+        print(f"График режима {mode}: {fname}")
 
-    # Гистограмма финальных цен
-    plt.figure(figsize=(10, 5))
-    plt.hist(final_prices, bins=40, edgecolor='white', color='steelblue')
-    plt.axvline(x=1.0, color='red', linestyle='--', label='Стартовая цена')
-    plt.title('Распределение финальной цены паттернов')
-    plt.xlabel('Финальная цена (норм.)')
-    plt.ylabel('Количество паттернов')
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(data_dir / 'pattern_finals_hist.png', dpi=150)
-    print(f"Гистограмма финалов: {data_dir / 'pattern_finals_hist.png'}")
-
-    # Гистограмма глобальных минимумов
-    plt.figure(figsize=(10, 5))
-    plt.hist(min_values, bins=40, edgecolor='white', color='darkorange')
-    plt.title('Распределение минимального значения в паттернах')
-    plt.xlabel('Минимальная цена (норм.)')
-    plt.ylabel('Количество паттернов')
-    plt.tight_layout()
-    plt.savefig(data_dir / 'pattern_minimums_hist.png', dpi=150)
-    print(f"Гистограмма минимумов: {data_dir / 'pattern_minimums_hist.png'}")
-
-    # Если нужна сетка
+    # 3. Если нужна сетка (по каждому режиму на отдельной странице)
     if args.grid:
-        output_dir = Path('all_patterns_plots')
-        output_dir.mkdir(exist_ok=True)
-        pat_list = list(patterns.items())
-        n_total = len(pat_list)
-        ncols = 5
-        nrows = 5  # 25 на листе
-        for page_start in range(0, n_total, ncols * nrows):
-            page_pats = pat_list[page_start:page_start + ncols * nrows]
-            if not page_pats:
-                break
-            fig, axes = plt.subplots(nrows, ncols, figsize=(20, 16))
-            axes = axes.flatten()
-            for idx, (pid, p) in enumerate(page_pats):
-                ax = axes[idx]
+        import math
+        for mode, pats in sorted(mode_patterns.items()):
+            n = len(pats)
+            cols = 5
+            rows = math.ceil(n / cols)
+            fig, axes = plt.subplots(rows, cols, figsize=(cols*4, rows*3))
+            axes = axes.flatten() if n > 1 else [axes]
+            for i, p in enumerate(pats):
+                ax = axes[i]
                 ax.plot(p['avg_curve'], linewidth=0.8)
-                ax.set_title(f"{pid}\n({p['num_twins']} близн.)", fontsize=8)
+                ax.set_title(f"{p['id']}\n({p['num_twins']} близн.)", fontsize=7)
                 ax.axhline(y=1.0, color='gray', linestyle=':', alpha=0.5)
-            # Скрыть лишние оси
-            for j in range(idx + 1, len(axes)):
+            for j in range(i+1, len(axes)):
                 axes[j].set_visible(False)
             plt.tight_layout()
-            page_num = page_start // (ncols * nrows) + 1
-            fname = output_dir / f'patterns_page_{page_num:02d}.png'
-            plt.savefig(fname, dpi=100)
+            fname = data_dir / f'patterns_{mode}_grid.png'
+            plt.savefig(fname, dpi=120)
             plt.close()
-            print(f"  Сохранена страница {page_num}")
-        print(f"Сетка сохранена в {output_dir}/")
+            print(f"Сетка режима {mode}: {fname}")
+
+    # 4. Статистика по режимам
+    print("\n=== Статистика по режимам ===")
+    for mode, pats in sorted(mode_patterns.items()):
+        finals = [p['avg_curve'][-1] for p in pats]
+        mins = [min(p['avg_curve']) for p in pats]
+        print(f"{mode}: паттернов {len(pats)}, "
+              f"средняя финальная цена {np.mean(finals):.3f}, "
+              f"мин.финал {min(finals):.3f}, макс.финал {max(finals):.3f}")
 
 if __name__ == '__main__':
     main()
